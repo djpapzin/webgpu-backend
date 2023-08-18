@@ -1,89 +1,117 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Bar Chart Visualization</title>
-    <style>
-        body { margin: 0; }
-        canvas { display: block; }
-        .bar-label {
-          color: white;
-          font-family: Arial, sans-serif;
-          text-align: center;
-          width: 60px;   
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>WebGPU Bar Graph</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+  </head>
+  <body>
+    <canvas id="canvas" width="800" height="400"></canvas>
+    <script type="module">
+      async function init() {
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('webgpu');
+        const adapter = await navigator.gpu.requestAdapter();
+        const device = await adapter.requestDevice();
+        context.configure({ device, format: 'bgra8unorm' });
+
+        function prepareBarVertices(salesData) {
+          const vertices = [];
+          const barWidth = 0.1;
+          salesData.forEach((data, index) => {
+            const { month, amount } = data;
+            const normalizedAmount = amount / 1000;
+            const x = index * barWidth - 1;
+            vertices.push(
+              x, 0, x + barWidth, 0, x + barWidth, normalizedAmount,
+              x, 0, x + barWidth, normalizedAmount, x, normalizedAmount
+            );
+          });
+          return new Float32Array(vertices);
+        }
+
+        function createVertexBuffer(vertices) {
+          const buffer = device.createBuffer({
+            size: vertices.byteLength,
+            usage: GPUBufferUsage.VERTEX,
+            mappedAtCreation: true,
+          });
+          new Float32Array(buffer.getMappedRange()).set(vertices);
+          buffer.unmap();
+          return buffer;
+        }
+
+        const vertexShaderCode = `
+        [[stage(vertex)]] fn main([[location(0)]] position: vec3<f32>) -> [[builtin(position)]] vec4<f32> {
+          return vec4<f32>(position, 1.0);
+        }
+      `;
+      
+        const fragmentShaderCode = `
+          [[stage(fragment)]] fn main() -> [[location(0)]] vec4<f32> {
+            return vec4<f32>(1.0, 0.0, 0.0, 1.0); // Red color
+          }
+        `;
+          
+
+        function createPipeline(vertexShaderCode, fragmentShaderCode) {
+          const vertexModule = device.createShaderModule({ code: vertexShaderCode });
+          const fragmentModule = device.createShaderModule({ code: fragmentShaderCode });
+
+          // Create an empty pipeline layout
+          const pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [] });
+
+          return device.createRenderPipeline({
+            layout: pipelineLayout, 
+            vertex: {
+              module: vertexModule,
+              entryPoint: 'main',
+              buffers: [{
+                arrayStride: 12,
+                attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }],
+              }],
+            },
+            fragment: {
+              module: fragmentModule,
+              entryPoint: 'main',
+              targets: [{ format: 'bgra8unorm' }],
+            },
+            primitive: { topology: 'triangle-list' },
+          });
+        }
+
+        function renderBarGraph(salesData) {
+          const vertices = prepareBarVertices(salesData);
+          const vertexBuffer = createVertexBuffer(vertices);
+          const pipeline = createPipeline(vertexShaderCode, fragmentShaderCode);
+
+          const commandEncoder = device.createCommandEncoder();
+          const passEncoder = commandEncoder.beginRenderPass({
+            colorAttachments: [{
+              view: context.getCurrentTexture().createView(),
+              loadValue: { r: 1, g: 1, b: 1, a: 1 },
+              loadOp: 'load', // Added loadOp property
+              storeOp: 'store',
+            }],
+          });
+
+          passEncoder.setPipeline(pipeline);
+          passEncoder.setVertexBuffer(0, vertexBuffer);
+          passEncoder.draw(6 * salesData.length, 1, 0, 0);
+          passEncoder.finish();
+          device.queue.submit([commandEncoder.finish()]);
+        }
+
+        const salesData = [
+          { month: 'January', amount: 400 },
+          { month: 'February', amount: 700 },
+          // ...
+        ];
+
+        renderBarGraph(salesData);
       }
-    </style>
-</head>
-<body>
-  <div id="visualization-container" style="position: relative;"></div>
-<script src="https://threejs.org/build/three.js"></script>
-<script>
-    let scene, camera, renderer;
-    async function fetchData() {
-      const response = await fetch('http://localhost:3000/get-data');
-      const data = await response.json();
-      return data;
-    }
 
-    function init(data) {
-        // Scene
-        scene = new THREE.Scene();
-
-        // Camera
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 10;
-
-        // Renderer
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('visualization-container').appendChild(renderer.domElement);        
-
-        const barWidth = 1;
-        const spacing = 2;
-        const totalWidth = (barWidth + spacing) * data.length;
-
-        // Create bars
-        data.forEach((item, idx) => {
-            const geometry = new THREE.BoxGeometry(barWidth, item.rate / 10, barWidth);
-            const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-            const bar = new THREE.Mesh(geometry, material);
-            bar.position.x = idx * (barWidth + spacing) - totalWidth / 2 + barWidth / 2;
-            scene.add(bar);
-            
-            // Add label
-            const labelDiv = document.createElement('div');
-            labelDiv.className = 'bar-label';
-            labelDiv.textContent = item.country;
-            labelDiv.style.position = 'absolute';
-            labelDiv.style.bottom = '10px';
-            labelDiv.style.left = (window.innerWidth / 2 + bar.position.x * 60 - 30) + 'px';  // Adjusted this line
-            document.getElementById('visualization-container').appendChild(labelDiv);
-        });
-
-        // Lighting
-        const light = new THREE.PointLight(0xFFFFFF, 1, 1000);
-        light.position.set(0, 0, 10);
-        scene.add(light);
-    }
-
-    function animate() {
-        requestAnimationFrame(animate);
-        renderer.render(scene, camera);
-    }
-
-    window.addEventListener('resize', function() {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      renderer.setSize(width, height);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    });
-
-    fetchData().then(data => {
-      init(data);
-      animate();
-    });
-  
-</script>
-</body>
+      init();
+    </script>
+  </body>
 </html>

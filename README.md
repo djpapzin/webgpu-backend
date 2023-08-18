@@ -1,5 +1,11 @@
 # WebGPU Backend with Data Visualization
 
+This is the original repo that won the [lablab.ai WebGPU Hackathon](https://lablab.ai/event/webgpu-hackathon) that was transfered to the team repo [Tender AI](https://github.com/Fayaz-khani/WebGPU_Hack) so the team can make their contributions and turn it into the best project that eventually won: **VisualPro**
+
+![WebGPU Competition results](WEbGPU_Competition.png)
+
+
+
 This project serves as the backend for a WebGPU application. It's designed to process user input, simulate it with WebGPU, and then send the results to the frontend to be visualized using Three.js for 3D bar chart representation.
 
 ## Getting Started

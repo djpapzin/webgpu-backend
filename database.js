@@ -8,7 +8,7 @@ const db = new sqlite3.Database('./data.db', (err) => {
         console.log('Connected to SQLite database.');
         db.run(`CREATE TABLE IF NOT EXISTS data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            country TEXT,
+            name TEXT,
             rate REAL
         )`, (err) => {
             if (err) {
